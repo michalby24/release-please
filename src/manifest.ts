@@ -1687,7 +1687,16 @@ async function latestReleaseVersion(
   );
 
   if (candidateReleaseVersions.length > 0) {
-    // Find largest release number (sort descending then return first)
+    // If prerelease flow is enabled, prefer latest matching prerelease
+    if (config.prerelease && config.prereleaseType) {
+      const prereleaseCandidates = candidateReleaseVersions.filter(v => {
+        return v.preRelease ? v.preRelease.startsWith(config.prereleaseType!) : false;
+      });
+      if (prereleaseCandidates.length > 0) {
+        return prereleaseCandidates.sort((a, b) => b.compare(a))[0];
+      }
+    }
+    // Otherwise, find largest release number (sort descending then return first)
     return candidateReleaseVersions.sort((a, b) => b.compare(a))[0];
   }
 
