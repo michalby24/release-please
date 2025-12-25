@@ -615,6 +615,46 @@ export class Manifest {
       );
     }
 
+    // If prerelease is enabled, prefer anchoring history at the latest matching prerelease tag
+    // for each path. This ensures commit collection starts after the last prerelease (e.g., rc).
+    for (const path in this.repositoryConfig) {
+      const config = this.repositoryConfig[path];
+      if (config.prerelease && config.prereleaseType) {
+        const strategy = strategiesByPath[path];
+        const component = await strategy.getComponent();
+        // Gather all tags and find the latest matching prerelease for this path/component
+        const allTags = await this.getAllTags();
+        const prereleaseCandidates: {tag: TagName; sha: string}[] = [];
+        for (const name in allTags) {
+          const parsed = TagName.parse(name);
+          if (!parsed) continue;
+          // Match component/tag format and prerelease type prefix
+          if (
+            tagMatchesConfig(parsed, component, config.includeComponentInTag) &&
+            parsed.version.preRelease &&
+            parsed.version.preRelease.startsWith(config.prereleaseType)
+          ) {
+            prereleaseCandidates.push({tag: parsed, sha: allTags[name].sha});
+          }
+        }
+        if (prereleaseCandidates.length > 0) {
+          // Pick latest prerelease by semantic version compare
+          prereleaseCandidates.sort((a, b) => b.tag.version.compare(a.tag.version));
+          const latest = prereleaseCandidates[0];
+          this.logger.info(
+            `Using latest prerelease tag for path ${path}: ${latest.tag.toString()} (${latest.sha})`
+          );
+          releaseShasByPath[path] = latest.sha;
+          releasesByPath[path] = {
+            name: latest.tag.toString(),
+            tag: latest.tag,
+            sha: latest.sha,
+            notes: releasesByPath[path]?.notes || '',
+          };
+        }
+      }
+    }
+
     // iterate through commits and collect commits until we have
     // seen all release commits
     this.logger.info('Collecting commits since all latest releases');
